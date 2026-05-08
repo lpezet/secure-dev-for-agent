@@ -6,7 +6,7 @@
   "shutdownAction": "stopCompose",
   "postCreateCommand": "/workspace/.devcontainer/dev/setup.sh",
   "postStartCommand": "/workspace/.devcontainer/dev/setup-start.sh",
-  "remoteUser": "vscode",
+  "remoteUser": "node",
   "customizations": {
     "vscode": {
       "extensions": ["anthropic.claude-code"]
