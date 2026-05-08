@@ -3,8 +3,6 @@ FROM mitmproxy/mitmproxy:12.2.2
 USER root
 RUN pip install --no-cache-dir requests cachetools
 
-USER mitmproxy
-
 CMD ["mitmdump", \
      "--listen-host", "0.0.0.0", \
      "--listen-port", "8080", \
