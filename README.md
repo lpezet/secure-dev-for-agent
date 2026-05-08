@@ -15,35 +15,39 @@ agent's process.
 
 ```
 ┌─────────────────────────────────────────┐
-│  dev container (Claude Code, git, gh)   │
+│            Dev Container                │
+|       (Claude Code, git, gh)            │
 │  HTTPS_PROXY=http://proxy:8080          │  network: dev
 │  GIT_CREDENTIAL_URL=cred-gateway        │
 │  No credentials, no .env, no API keys   │
 └────┬─────────────────────────┬──────────┘
-     │ HTTPS (intercepted)     │ git creds only
+     │ HTTPS (intercepted)     │ git creds, etc.
      ▼                         ▼
 ┌──────────────┐   ┌─────────────────────┐
-│  proxy       │   │  cred-gateway       │
+│    Proxy     │   │   Cred Gateway      │
 │  mitmproxy   │   │  nginx, whitelist:  │
 │  + addons    │   │  /github/credential │
 │              │   │  /github/identity   │
 └──────┬───────┘   └──────────┬──────────┘
        │                      │
-       │     network: secure  │
-       │     (no dev access)  │
+       │   network: secure    │
+       │   (no dev access)    │
        ▼                      ▼
 ┌─────────────────────────────────────────┐
-│  broker                                 │
+│               Broker                    │
 │  - Reads .pem / api keys from /secrets  │
 │  - Mints GitHub installation tokens     │
 │  - Mints Cloudflare scoped tokens       │
 │  - /anthropic/key reachable only by     │
 │    proxy on `secure` network            │
-└─────────────────────────────────────────┘
-             │
-             ▼
-        ~/.config/agent-creds/
-        (read-only bind mount)
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+      ┌────────────────────────┐
+      │         Host           │
+      │ ~/.config/agent-creds/ │
+      │ (read-only bind mount) │
+      └────────────────────────┘
 ```
 
 Two networks keep credentials out of the dev container:
@@ -86,10 +90,17 @@ chmod 700 ~/.config/agent-creds
 cp /path/to/your-app.private-key.pem ~/.config/agent-creds/github-app.pem
 
 # Anthropic API key (single line, no trailing newline — use printf)
-printf 'sk-ant-...' > ~/.config/agent-creds/anthropic.key
+# space before command to prevent history (in most shells)
+ printf 'sk-ant-...' > ~/.config/agent-creds/anthropic.key
+# or use read -rs
+# read -rs KEY && printf '%s' "$KEY" > ~/.config/agent-creds/anthropic.key
 
 # Cloudflare token with "User API Tokens:Edit" permission (only needed if using Cloudflare)
-printf '...' > ~/.config/agent-creds/cloudflare-minter.token
+# space before command to prevent history (in most shells)
+ printf '...' > ~/.config/agent-creds/cloudflare-minter.token
+# or use read -rs
+# read -rs KEY && printf '%s' "$KEY" > ~/.config/agent-creds/cloudflare-minter.token
+
 
 chmod 600 ~/.config/agent-creds/*
 ```
@@ -147,21 +158,21 @@ Then rebuild the dev container in VSCode ("Dev Containers: Rebuild Container") s
 
 ```
 [dev container]
-	| 
+	|
  [dev]          ← the VS Code workspace container
- [proxy]        ← mitmproxy intercepts all outbound traffic, injects credentials 
- [broker]       ← holds secrets, issues tokens on demand 
- [cred-gateway] ← nginx, exposes GitHub credentials/identity to dev container 
+ [proxy]        ← mitmproxy intercepts all outbound traffic, injects credentials
+ [broker]       ← holds secrets, issues tokens on demand
+ [cred-gateway] ← nginx, exposes GitHub credentials/identity to dev container
 ```
 
 ## What you can test individually
-																								 
+
 1. `broker` — build and smoke-test the HTTP server
 
 ```bash
 cd .devcontainer
 docker build -t test-broker ./broker
-# Run without real secrets to verify it starts and /healthz responds: 
+# Run without real secrets to verify it starts and /healthz responds:
 docker run --rm \
 -e GITHUB_APP_ID=dummy \
 -e GITHUB_APP_INSTALLATION_ID=dummy \
@@ -170,7 +181,7 @@ docker run --rm \
 -e CLOUDFLARE_MINTER_TOKEN_PATH=/dev/null \
 -p 8080:8080 test-broker
 # test healthz
-curl http://localhost:8080/healthz 
+curl http://localhost:8080/healthz
 ```
 
 2. `proxy` — build and verify mitmproxy starts
@@ -182,7 +193,8 @@ docker build -t test-proxy ./proxy
 docker run --rm -v $PWD/proxy/addons:/addons:ro -e BROKER_URL=http://localhost:9999 test-proxy
 # Check that the CA cert gets generated:
 docker exec $(docker ps -q --filter ancestor=test-proxy) ls /home/mitmproxy/.mitmproxy/
-```																							 
+```
+
 3. `cred-gateway` — validate config, then verify the whitelist/deny rules
 
 ```bash
@@ -229,7 +241,7 @@ docker run --rm test-dev node --version
 # Verify the vscode user exists (devcontainer.json sets remoteUser: vscode)
 docker run --rm test-dev id vscode
 ```
-																							 
+
 5. **Full stack without VS Code** — run `docker compose` directly from the `.devcontainer` dir:
 
 ```bash
