@@ -5,9 +5,8 @@ services:
     build: ./broker
     volumes:
       - ${HOME}/.config/agent-creds:/secrets:ro
+    env_file: .env
     environment:
-      GITHUB_APP_ID: ${GITHUB_APP_ID}
-      GITHUB_APP_INSTALLATION_ID: ${GITHUB_APP_INSTALLATION_ID}
       GITHUB_APP_PRIVATE_KEY_PATH: /secrets/github-app.pem
       ANTHROPIC_API_KEY_PATH: /secrets/anthropic.key
       CLOUDFLARE_MINTER_TOKEN_PATH: /secrets/cloudflare-minter.token

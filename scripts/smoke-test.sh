@@ -68,7 +68,9 @@ echo "HTTP $HTTP_CODE (expected 403)"
 
 # ---------- GitHub via proxy (using GH_TOKEN=proxy-injected dummy) ----------
 section "6. GitHub API via proxy (dummy GH_TOKEN, real token injected by proxy)"
-gh api /user | jq '{login, type, id}'
+# /user requires a user OAuth token; installation tokens act as the App, not a user.
+# /installation/repositories is the canonical endpoint for installation tokens.
+gh api /installation/repositories | jq '{total_count, repos: [.repositories[].full_name]}'
 
 section "7. GitHub API rate limit (verify it's the App's quota)"
 gh api /rate_limit | jq '.rate'

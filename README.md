@@ -7,7 +7,7 @@ agent's process.
 ## Quick start
 
 1. Complete the [Prerequisites](#prerequisites) below (GitHub App + credential files).
-2. Copy `.env.example` to `.env` and fill in `GITHUB_APP_ID` and `GITHUB_APP_INSTALLATION_ID`.
+2. Copy `.devcontainer/.env.example` to `.devcontainer/.env` and fill in `GITHUB_APP_ID` and `GITHUB_APP_INSTALLATION_ID`.
 3. Open this repo in VSCode → "Reopen in Container".
 4. Run the smoke test: `./scripts/smoke-test.sh`
 
@@ -94,12 +94,14 @@ printf '...' > ~/.config/agent-creds/cloudflare-minter.token
 chmod 600 ~/.config/agent-creds/*
 ```
 
-### `.env` at repo root
+### `.devcontainer/.env`
 
 ```
 GITHUB_APP_ID=123456
 GITHUB_APP_INSTALLATION_ID=78901234
 ```
+
+This file must live in `.devcontainer/` alongside `compose.yaml`. Docker Compose resolves `.env` relative to the compose file, so a `.env` at the repo root is not picked up — including when VSCode's "Reopen in Container" triggers the compose stack.
 
 ## Operations
 
@@ -262,8 +264,10 @@ docker compose exec dev curl -s -o /dev/null -w "%{http_code}" http://cred-gatew
 
 # Tear down when done
 docker compose down -v
+# To delete volumes and images (or restart from scratch, good when making changes and ensuring everything is up-to-date when re-running)
+# docker compose -f .devcontainer/compose.yaml down  --rmi all -v
 ```
 
-With real credentials configured (`.env` + `~/.config/agent-creds/`), run `./scripts/smoke-test.sh` from inside the dev container for end-to-end validation including live API calls.
+With real credentials configured (`.devcontainer/.env` + `~/.config/agent-creds/`), run `./scripts/smoke-test.sh` from inside the dev container for end-to-end validation including live API calls.
 
 The `dev` container's `setup.sh` and `setup-start.sh` scripts are also independently runnable if you exec into a running `dev` container.

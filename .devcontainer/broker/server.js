@@ -15,9 +15,9 @@ function getGitHubAuth() {
       "utf8",
     );
     githubAuth = createAppAuth({
-      appId: process.env.GITHUB_APP_ID,
+      appId: parseInt(process.env.GITHUB_APP_ID, 10),
       privateKey,
-      installationId: process.env.GITHUB_APP_INSTALLATION_ID,
+      installationId: parseInt(process.env.GITHUB_APP_INSTALLATION_ID, 10),
     });
   }
   return githubAuth;
@@ -49,7 +49,7 @@ async function getGitHubIdentity() {
   const appInfo = await ghGet("/app", `Bearer ${appJwt}`);
   const slug = appInfo.slug;
 
-  const botUser = await ghGet(`/users/${slug}%5Bbot%5D`, `Bearer ${appJwt}`);
+  const botUser = await ghGet(`/users/${slug}%5Bbot%5D`, null);
 
   identityCache = {
     name: `${slug}[bot]`,
@@ -64,16 +64,17 @@ async function getGitHubIdentity() {
 // Broker destinations are limited to those two hosts; verify in server.js.
 function ghGet(path, authHeader) {
   return new Promise((resolve, reject) => {
+    const headers = {
+      "User-Agent": "agent-broker",
+      Accept: "application/vnd.github+json",
+    };
+    if (authHeader) headers.Authorization = authHeader;
     https
       .get(
         {
           host: "api.github.com",
           path,
-          headers: {
-            Authorization: authHeader,
-            "User-Agent": "agent-broker",
-            Accept: "application/vnd.github+json",
-          },
+          headers,
         },
         (res) => {
           let data = "";
@@ -244,4 +245,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[broker] listening on :${PORT}`);
+  console.log(`[broker] GITHUB_APP_ID=${process.env.GITHUB_APP_ID || "(not set)"}`);
+  console.log(`[broker] GITHUB_APP_INSTALLATION_ID=${process.env.GITHUB_APP_INSTALLATION_ID || "(not set)"}`);
+  console.log(`[broker] GITHUB_APP_PRIVATE_KEY_PATH=${process.env.GITHUB_APP_PRIVATE_KEY_PATH || "(not set)"}`);
 });
