@@ -129,7 +129,7 @@ async function mintCloudflareToken(profile) {
   const minterToken = fs
     .readFileSync(process.env.CLOUDFLARE_MINTER_TOKEN_PATH, "utf8")
     .trim();
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const body = JSON.stringify({
