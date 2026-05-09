@@ -26,6 +26,31 @@ echo "HTTP $HTTP_CODE (expected 403)"
 [ "$HTTP_CODE" = "403" ] || { echo "FAIL: proxy forwarded request to broker"; exit 1; }
 echo "PASS: proxy blocked tunnel to broker"
 
+section "1c. Direct external connections are blocked by the firewall (init-firewall.sh)"
+# --noproxy '*' bypasses HTTPS_PROXY, so this is a raw connection not through the proxy.
+# The iptables rules set by init-firewall.sh must reject it.
+if curl --connect-timeout 3 --noproxy '*' -s https://1.1.1.1 >/dev/null 2>&1; then
+  echo "FAIL: direct external connection succeeded — init-firewall.sh may not have run"
+  exit 1
+else
+  echo "PASS: direct external connection blocked by firewall"
+fi
+
+section "1d. Non-allowlisted domain is blocked by the proxy (allowlist.py)"
+# Requires ~/.config/secure-dev-for-agent/allowlist.txt to be configured.
+# If the file is absent the proxy runs in permissive mode and this check will fail —
+# that failure is intentional: it tells you to copy .devcontainer/allowlist.txt there.
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://example.com)
+echo "HTTP $HTTP_CODE (expected 403)"
+[ "$HTTP_CODE" = "403" ] || {
+  echo "FAIL: proxy did not block example.com (got $HTTP_CODE)"
+  echo "      Proxy may be in permissive mode (allowlist.txt not found)."
+  echo "      Fix: cp .devcontainer/allowlist.txt ~/.config/secure-dev-for-agent/allowlist.txt"
+  echo "      Then: docker compose -f .devcontainer/compose.yaml restart proxy"
+  exit 1
+}
+echo "PASS: non-allowlisted domain blocked by proxy allowlist"
+
 section "2. cred-gateway exposes only whitelisted endpoints"
 echo "  /healthz (allowed):"
 curl -sf http://cred-gateway/healthz
