@@ -4,7 +4,7 @@ services:
   broker:
     build: ./broker
     volumes:
-      - ${HOME}/.config/agent-creds:/secrets:ro
+      - ${HOME}/.config/secure-dev-for-agent:/secrets:ro
     env_file: .env
     environment:
       GITHUB_APP_PRIVATE_KEY_PATH: /secrets/github-app.pem
@@ -33,6 +33,7 @@ services:
     volumes:
       - ./proxy/addons:/addons:ro
       - proxy-certs:/home/mitmproxy/.mitmproxy
+      - ${HOME}/.config/secure-dev-for-agent/allowlist.txt:/etc/agent-allowlist:ro
     environment:
       BROKER_URL: http://broker:8080
     networks: [secure, dev]
@@ -66,6 +67,9 @@ services:
 
   dev:
     build: ./dev
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     depends_on:
       proxy:
         condition: service_healthy
