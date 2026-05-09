@@ -7,6 +7,7 @@ CMD ["mitmdump", \
      "--listen-host", "0.0.0.0", \
      "--listen-port", "8080", \
      "-s", "/addons/policy.py", \
+     "-s", "/addons/allowlist.py", \
      "-s", "/addons/github.py", \
      "-s", "/addons/anthropic.py", \
      "-s", "/addons/cloudflare.py", \

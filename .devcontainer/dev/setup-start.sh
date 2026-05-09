@@ -3,6 +3,9 @@
 # Refreshes git identity from the broker in case the GitHub App was reconfigured.
 set -euo pipefail
 
+echo "[setup-start] applying egress firewall..."
+sudo /usr/local/bin/init-firewall.sh
+
 echo "[setup-start] waiting for identity endpoint (cred-gateway → broker → GitHub)..."
 READY=false
 for i in 1 2 3 4 5; do

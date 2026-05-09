@@ -75,7 +75,7 @@ And publish port 8081 in compose.yaml.
      │                              │
      │ git creds only               │ fetches creds from broker
      ▼                              ▼
-[cred-gateway: nginx]  ──────►  [broker: Node.js]  ──reads──►  ~/.config/agent-creds/
+[cred-gateway: nginx]  ──────►  [broker: Node.js]  ──reads──►  ~/.config/secure-dev-for-agent/
 ```
 
 **Two Docker networks enforce the security boundary:**
@@ -87,7 +87,7 @@ The broker is on `secure` only. Docker DNS will not resolve `broker` from within
 
 ### broker (`broker/server.js`)
 
-Node.js HTTP server on `:8080`. Reads credentials from `/secrets` (bind-mounted from `~/.config/agent-creds/` on the host, read-only). Exposes:
+Node.js HTTP server on `:8080`. Reads credentials from `/secrets` (bind-mounted from `~/.config/secure-dev-for-agent/` on the host, read-only). Exposes:
 
 | Path | Who calls it | Notes |
 |---|---|---|
@@ -102,9 +102,10 @@ The broker makes direct outbound HTTPS calls to `api.github.com` and `api.cloudf
 
 ### proxy (`proxy/addons/`)
 
-mitmproxy with four addons loaded in order:
+mitmproxy with five addons loaded in order:
 
 - **`policy.py`** — blocks any request destined for `broker` or `cred-gateway` hostnames (defense-in-depth; Docker network isolation is the primary control)
+- **`allowlist.py`** — reads `/etc/agent-allowlist` (bind-mounted from `~/.config/secure-dev-for-agent/allowlist.txt` on the host) and blocks CONNECT requests to any domain not in the list. If the file is absent, all destinations are permitted (permissive mode, logged as a warning). Restart the proxy after editing the file.
 - **`github.py`** — matches `api.github.com` and `uploads.github.com` only. Fetches token from broker, injects as `Authorization: token ...`. Strips whatever the client sent. **Does not match `github.com`** — git push/pull goes through the credential helper path, not here.
 - **`anthropic.py`** — matches `api.anthropic.com`. Injects the API key. Blocks `/v1/organizations/*` (Admin API). Uses `responseheaders` hook + `flow.response.stream = True` for SSE to avoid buffering streamed responses.
 - **`cloudflare.py`** — matches `api.cloudflare.com`. Injects a scoped token. Caller can hint a profile via `X-Cf-Profile` header (stripped before forwarding); defaults to `workers-deploy`.
@@ -131,8 +132,15 @@ Based on `mcr.microsoft.com/devcontainers/typescript-node:20`. Has `gh` CLI and 
 5. Calls `setup-start.sh`
 
 `setup-start.sh` (postStartCommand, runs on every restart):
-1. Fetches GitHub App identity from cred-gateway and writes `git config user.name/email`
-2. Smoke-checks that `gh api /rate_limit` works through the proxy
+1. Applies `init-firewall.sh` via sudo — blocks all direct external connections, forcing everything through the proxy
+2. Fetches GitHub App identity from cred-gateway and writes `git config user.name/email`
+3. Smoke-checks that `gh api /rate_limit` works through the proxy
+
+`init-firewall.sh` (called by setup-start.sh, runs as root):
+- Saves and restores Docker's internal DNS NAT rules (127.0.0.11)
+- Detects the Docker dev network CIDR from the default-route interface
+- Sets iptables default-DROP on all chains, then allows only loopback + dev network traffic
+- Verifies that a direct external connection (bypassing the proxy) is blocked
 
 ## Non-obvious invariants
 
@@ -147,6 +155,14 @@ Based on `mcr.microsoft.com/devcontainers/typescript-node:20`. Has `gh` CLI and 
 **CA cert persistence.** The mitmproxy CA cert lives in the `proxy-certs` named Docker volume, shared between the `proxy` container (where it's generated) and the `dev` container (read-only). The proxy's healthcheck gates on the cert file existing, so `postCreateCommand` cannot race cert generation. Removing the volume forces cert regeneration and requires a container rebuild.
 
 **`credential.useHttpPath false` in git config** means one installation token is used for all repos regardless of path. This is intentional — the GitHub App's installation already scopes which repos it can access.
+
+**`init-firewall.sh` runs on every container start, not just creation.** iptables rules live in the kernel and survive container restarts, but flushing and re-applying on each start keeps the state predictable and handles kernel-rule drift. The flush/restore sequence preserves Docker's internal DNS NAT rules (127.0.0.11), which Docker writes into the container's network namespace at creation time. Without those rules, DNS stops working inside the container.
+
+**`allowlist.py` is permissive when the file is absent.** If `~/.config/secure-dev-for-agent/allowlist.txt` does not exist on the host, Docker bind-mounts create a directory at `/etc/agent-allowlist` rather than a file. The addon detects this via `os.path.isfile()` and falls back to permissive mode. The proxy logs a warning at startup.
+
+**Two complementary egress layers.** `init-firewall.sh` (iptables, network layer) blocks non-HTTP protocols and forces all traffic through the proxy. `allowlist.py` (mitmproxy, HTTP layer) constrains which domains the proxy will forward to. Both are needed: without iptables, raw TCP/UDP bypasses the proxy; without the allowlist, agents can reach any HTTPS destination through the proxy.
+
+**The dev container needs `NET_ADMIN` and `NET_RAW` capabilities** for `iptables` and `ipset` to work. These are set in `compose.yaml` under `cap_add`. Do not remove them.
 
 **Do not add `USER mitmproxy` to `proxy/Dockerfile`.** The base image (`mitmproxy/mitmproxy`) ships with a `docker-entrypoint.sh` that runs `usermod` (requires root) to align the `mitmproxy` user's UID with the mounted volume owner, then drops privileges via `gosu mitmproxy`. Adding `USER mitmproxy` makes the entrypoint run as non-root, causing `usermod` to fail with "operation not permitted". The `USER root` + `RUN pip install` block is correct; the entrypoint handles the privilege drop. Proxy stdout is also block-buffered when not attached to a tty — add `-e PYTHONUNBUFFERED=1` or `-it` when testing standalone to see logs in real time.
 

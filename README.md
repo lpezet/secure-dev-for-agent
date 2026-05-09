@@ -43,11 +43,12 @@ agent's process.
 └────────────────┬────────────────────────┘
                  │
                  ▼
-      ┌────────────────────────┐
-      │         Host           │
-      │ ~/.config/agent-creds/ │
-      │ (read-only bind mount) │
-      └────────────────────────┘
+      ┌───────────────────────────────────────┐
+      │                 Host                  │
+      │  ~/.config/secure-dev-for-agent/      │
+      │  credentials → broker  (read-only)    │
+      │  allowlist.txt → proxy (read-only)    │
+      └───────────────────────────────────────┘
 ```
 
 Two networks keep credentials out of the dev container:
@@ -80,29 +81,38 @@ No webhook required.
 5. After install, note the **Installation ID**: it's the trailing number in the URL, e.g. `https://github.com/settings/installations/78901234` → ID is `78901234`. Or run `gh api /app/installations` once authenticated as the App.
 6. The App must be installed on **every** repo the agent will touch.
 
-### Credential files
+### Credential files and allowlist
 
 ```bash
-mkdir -p ~/.config/agent-creds
-chmod 700 ~/.config/agent-creds
+mkdir -p ~/.config/secure-dev-for-agent
+chmod 700 ~/.config/secure-dev-for-agent
 
 # GitHub App private key
-cp /path/to/your-app.private-key.pem ~/.config/agent-creds/github-app.pem
+cp /path/to/your-app.private-key.pem ~/.config/secure-dev-for-agent/github-app.pem
 
 # Anthropic API key (single line, no trailing newline — use printf)
 # space before command to prevent history (in most shells)
- printf 'sk-ant-...' > ~/.config/agent-creds/anthropic.key
+ printf 'sk-ant-...' > ~/.config/secure-dev-for-agent/anthropic.key
 # or use read -rs
-# read -rs KEY && printf '%s' "$KEY" > ~/.config/agent-creds/anthropic.key
+# read -rs KEY && printf '%s' "$KEY" > ~/.config/secure-dev-for-agent/anthropic.key
 
 # Cloudflare token with "User API Tokens:Edit" permission (only needed if using Cloudflare)
 # space before command to prevent history (in most shells)
- printf '...' > ~/.config/agent-creds/cloudflare-minter.token
+ printf '...' > ~/.config/secure-dev-for-agent/cloudflare-minter.token
 # or use read -rs
-# read -rs KEY && printf '%s' "$KEY" > ~/.config/agent-creds/cloudflare-minter.token
+# read -rs KEY && printf '%s' "$KEY" > ~/.config/secure-dev-for-agent/cloudflare-minter.token
 
+chmod 600 ~/.config/secure-dev-for-agent/*
 
-chmod 600 ~/.config/agent-creds/*
+# Proxy allowlist — controls which external domains the proxy will forward to.
+# Copy the template from the repo and customise as needed.
+cp .devcontainer/allowlist.txt ~/.config/secure-dev-for-agent/allowlist.txt
+```
+
+If `allowlist.txt` is absent the proxy starts in permissive mode (all destinations allowed) and logs a warning. Add or remove domains and restart the proxy to apply changes:
+
+```bash
+docker compose -f .devcontainer/compose.yaml restart proxy
 ```
 
 ### `.devcontainer/.env`
@@ -122,21 +132,21 @@ This file must live in `.devcontainer/` alongside `compose.yaml`. Docker Compose
 
 ### Rotating the GitHub App private key
 
-1. On the host: replace `~/.config/agent-creds/github-app.pem` with the new key
+1. On the host: replace `~/.config/secure-dev-for-agent/github-app.pem` with the new key
 2. `docker compose -f .devcontainer/compose.yaml restart broker`
 3. Wait up to 5 minutes for proxy token caches to expire, OR restart the proxy immediately:
    `docker compose -f .devcontainer/compose.yaml restart proxy`
 
 ### Rotating the Anthropic API key
 
-1. On the host: overwrite `~/.config/agent-creds/anthropic.key` with the new key (use `printf`, not `echo`, to avoid a trailing newline)
+1. On the host: overwrite `~/.config/secure-dev-for-agent/anthropic.key` with the new key (use `printf`, not `echo`, to avoid a trailing newline)
 2. `docker compose -f .devcontainer/compose.yaml restart broker proxy`
    (proxy restart is needed because the proxy caches the key for 5 minutes)
 
 ### Rotating the Cloudflare minter token
 
 1. Create a new minter token in the Cloudflare dashboard (User API Tokens:Edit permission)
-2. Replace `~/.config/agent-creds/cloudflare-minter.token` on the host
+2. Replace `~/.config/secure-dev-for-agent/cloudflare-minter.token` on the host
 3. `docker compose -f .devcontainer/compose.yaml restart broker`
 4. Existing scoped tokens minted by the old minter remain valid until their `expires_on`
 
@@ -280,6 +290,6 @@ docker compose down -v
 # docker compose -f .devcontainer/compose.yaml down  --rmi all -v
 ```
 
-With real credentials configured (`.devcontainer/.env` + `~/.config/agent-creds/`), run `./scripts/smoke-test.sh` from inside the dev container for end-to-end validation including live API calls.
+With real credentials configured (`.devcontainer/.env` + `~/.config/secure-dev-for-agent/`), run `./scripts/smoke-test.sh` from inside the dev container for end-to-end validation including live API calls.
 
 The `dev` container's `setup.sh` and `setup-start.sh` scripts are also independently runnable if you exec into a running `dev` container.
