@@ -162,7 +162,7 @@ docker compose -f .devcontainer/compose.yaml up -d
 
 Then rebuild the dev container in VSCode ("Dev Containers: Rebuild Container") so `postCreateCommand` reinstalls the new cert.
 
-# Testing
+# Testing/Troubleshooting
 
 ## The architecture
 
@@ -174,6 +174,36 @@ Then rebuild the dev container in VSCode ("Dev Containers: Rebuild Container") s
  [broker]       ← holds secrets, issues tokens on demand
  [cred-gateway] ← nginx, exposes GitHub credentials/identity to dev container
 ```
+
+## Logs
+
+Any HTTPS request that reaches the proxy but isn't in the allowlist is logged. Since all HTTP/HTTPS traffic is forced through the proxy via iptables, this is the log for discovering which domains to allow.
+
+To see blocked domains, run (outside the container):
+
+```bash
+docker compose -f .devcontainer/compose.yaml logs proxy | grep BLOCKED
+```
+
+Or tail it live while triggering your workflow:
+
+```bash
+docker compose -f .devcontainer/compose.yaml logs -f proxy | grep BLOCKED
+```
+
+The output will look like:
+
+```bash
+allowlist: BLOCKED CONNECT api.someservice.com
+```
+
+That host is what you add to your `~/.config/secure-dev-for-agent/allowlist.txt`, then restart the proxy:
+
+```bash
+docker compose -f .devcontainer/compose.yaml restart proxy
+```
+
+Note: iptables only blocks traffic that tries to bypass the proxy entirely (non-HTTP protocols, raw TCP to external IPs). Since it REJECTs rather than DROPs, those failures return immediately rather than timing out — but they won't appear in any log file without adding a LOG rule.
 
 ## What you can test individually
 
